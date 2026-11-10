@@ -40,3 +40,17 @@ The orchestrator in `orchestrator.py` controls the calling of different tools du
 * [X] I've estimated the time this will take and I'm confident I can complete it before the Unit 9 deadline.
   * [x] I have contributed to a large codebase before, and think that, with the assistance of Claude and other AI tools, that I can complete this in a reasonable amount of time.
 * [X] This issue has no open blockers or dependencies on other unresolved issues.
+
+## Unit 8 — Reproduction & solution planning
+
+**Reproduction commit link:** https://github.com/alexis-evans/pathreview-ai201-fa26-howard/commit/8abb335
+
+**Reproduction summary:**
+Added `tests/unit/test_orchestrator_tool_failures.py`, which breaks a tool with a simulated malformed LLM response and confirms `Orchestrator.run()` logs the failure and records it in `tool_results` with `success: False`. Reading `core/services/review_service.py` confirmed the other half: `_run_agent_orchestration()` is a hardcoded placeholder that never constructs an `Orchestrator`, so `tool_results` has no reader anywhere in the app — the failure has no path into the review output.
+
+**PLAN.md link:** https://github.com/alexis-evans/pathreview-ai201-fa26-howard/blob/fix/16-tool-failure-review-output/PLAN.md
+
+**Walkthrough video (recommended):** [not recorded yet]
+
+**Blockers or open questions:**
+Where exactly a tool failure should surface in the review response (a new `tool_failures` field on `FeedbackSection`/`ReviewResponse`, vs. folded into an existing section) isn't decided yet — I want to check the frontend's `ReviewSection` component before settling the schema. Also unclear whether a partial tool failure should still allow `review.status == "complete"`, or if there's a failure threshold that should mark it `"failed"` instead.
