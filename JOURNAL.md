@@ -50,7 +50,5 @@ Added `tests/unit/test_orchestrator_tool_failures.py`, which breaks a tool with 
 
 **PLAN.md link:** https://github.com/alexis-evans/pathreview-ai201-fa26-howard/blob/fix/16-tool-failure-review-output/PLAN.md
 
-**Walkthrough video (recommended):** [not recorded yet]
-
 **Blockers or open questions:**
 Where exactly a tool failure should surface in the review response (a new `tool_failures` field on `FeedbackSection`/`ReviewResponse`, vs. folded into an existing section) isn't decided yet — I want to check the frontend's `ReviewSection` component before settling the schema. Also unclear whether a partial tool failure should still allow `review.status == "complete"`, or if there's a failure threshold that should mark it `"failed"` instead.
