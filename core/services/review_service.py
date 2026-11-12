@@ -5,6 +5,13 @@ from uuid import UUID
 import structlog
 from sqlalchemy import and_, select
 
+from agent.orchestrator import Orchestrator
+from agent.tools.base import BaseTool
+from agent.tools.github_tool import GitHubTool
+from agent.tools.market_analyzer import MarketAnalyzer
+from agent.tools.readme_scorer import ReadmeScorer
+from agent.tools.skill_extractor import SkillExtractor
+from agent.tools.tech_detector import TechDetector
 from api.schemas.review import FeedbackSection
 from core.models.ingested_source import IngestedSource
 from core.models.profile import Profile
@@ -135,10 +142,12 @@ async def process_review(
 
         # Step 3: Run agent orchestration
         agent_output = await _run_agent_orchestration(profile, ingestion_results)
+        tool_failures = agent_output.get("tool_failures", [])
         log.info(
             "agent_orchestration_completed",
             review_id=str(review_id),
             sections_count=len(agent_output.get("sections", [])),
+            tool_failures_count=len(tool_failures),
         )
 
         # Step 4: Run RAG retrieval + generation
@@ -169,6 +178,7 @@ async def process_review(
         review.status = "complete"
         review.sections = [s.model_dump() for s in sections]
         review.overall_score = rag_output.get("overall_score", None)
+        review.error_message = _format_tool_failures(tool_failures)
         review.updated_at = datetime.utcnow()
 
         db.add(review)
@@ -178,6 +188,7 @@ async def process_review(
             "review_processing_completed",
             review_id=str(review_id),
             overall_score=review.overall_score,
+            tool_failures_count=len(tool_failures),
         )
 
     except Exception as exc:
@@ -280,12 +291,89 @@ async def _run_ingestion_pipeline(db, profile: Profile) -> list[dict]:
     return sources
 
 
+def _format_tool_failures(tool_failures: list[dict]) -> str | None:
+    """Build a user-facing summary of any tools that failed during analysis.
+
+    Args:
+        tool_failures: List of {"tool": str, "error": str} dicts.
+
+    Returns:
+        A one-line summary, or None if nothing failed.
+    """
+    if not tool_failures:
+        return None
+
+    details = "; ".join(f"{f['tool']} ({f['error']})" for f in tool_failures)
+    return f"Some analysis steps failed and were skipped: {details}"
+
+
+def _build_tool_registry() -> dict[str, BaseTool]:
+    """Build the registry of agent tools used during orchestration.
+
+    Returns:
+        Dict mapping tool name to a tool instance, keyed the way
+        Orchestrator._build_plan() names them.
+    """
+    return {
+        "github_tool": GitHubTool(),
+        "tech_detector": TechDetector(),
+        "readme_scorer": ReadmeScorer(),
+        "skill_extractor": SkillExtractor(),
+        "market_analyzer": MarketAnalyzer(),
+    }
+
+
+def _build_orchestrator_input(profile: Profile, ingestion_results: list[dict]) -> dict:
+    """Translate a Profile and its ingested sources into orchestrator input.
+
+    Args:
+        profile: The profile being reviewed.
+        ingestion_results: Output of _run_ingestion_pipeline.
+
+    Returns:
+        Dict shaped for Orchestrator._build_plan() (github_username,
+        readme_content, resume_text, etc.).
+    """
+    readme_content = next(
+        (s.get("data") for s in ingestion_results if s.get("source_type") == "readme"),
+        None,
+    )
+
+    return {
+        "github_username": profile.github_username,
+        "readme_content": readme_content,
+        "resume_text": profile.resume_text,
+        "repo_metadata": {},
+    }
+
+
 async def _run_agent_orchestration(profile: Profile, ingestion_results: list[dict]) -> dict:
     """
     Run agent orchestration to analyze ingested data.
-    Returns agent output with initial analysis.
+    Returns agent output with initial analysis, plus any tool_failures so
+    callers can surface them instead of silently dropping them.
     """
-    # Placeholder: actual agent orchestration logic
+    orchestrator = Orchestrator(tools=_build_tool_registry())
+    orchestrator_output = orchestrator.run(
+        str(profile.id), _build_orchestrator_input(profile, ingestion_results)
+    )
+
+    tool_results = orchestrator_output.get("tool_results", {})
+    tool_failures = [
+        {"tool": tool_name, "error": result.get("error", "unknown error")}
+        for tool_name, result in tool_results.items()
+        if isinstance(result, dict) and result.get("success") is False
+    ]
+    if tool_failures:
+        log.warning(
+            "agent_orchestration_tool_failures",
+            profile_id=str(profile.id),
+            failed_tools=[f["tool"] for f in tool_failures],
+        )
+
+    # Placeholder: actual section-generation logic. tool_results from the
+    # orchestrator above isn't used to build these yet (see issue #16 scope);
+    # only the failures are threaded through so they reach the review output.
     return {
         "sections": [
             {
@@ -302,6 +390,7 @@ async def _run_agent_orchestration(profile: Profile, ingestion_results: list[dic
             },
         ],
         "overall_score": 0.75,
+        "tool_failures": tool_failures,
     }
 
 
