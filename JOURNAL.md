@@ -52,3 +52,34 @@ Added `tests/unit/test_orchestrator_tool_failures.py`, which breaks a tool with 
 
 **Blockers or open questions:**
 Where exactly a tool failure should surface in the review response (a new `tool_failures` field on `FeedbackSection`/`ReviewResponse`, vs. folded into an existing section) isn't decided yet — I want to check the frontend's `ReviewSection` component before settling the schema. Also unclear whether a partial tool failure should still allow `review.status == "complete"`, or if there's a failure threshold that should mark it `"failed"` instead.
+
+## Unit 9 — Solution building & PR submission
+
+### Check-in 1 (mid-week)
+
+**Current progress:**
+Plan is complete as described in PLAN.md. Fix is implemented, and new tests are in place to verify behavior is working as intented.
+
+**Next steps:**
+Work on writing a script to verify the change visually.
+
+**Blockers:**
+N/A
+
+---
+
+### Check-in 2 (end of week)
+
+**PR link:** https://github.com/codepath/pathreview-ai201-fa26-howard/pull/94
+
+**Branch:** fix/16-tool-failure-review-output
+
+**What you built:**
+`_run_agent_orchestration()` in `core/services/review_service.py` now builds a real `Orchestrator` with the production tool registry and runs it against the profile's data, instead of returning hardcoded placeholder sections with no connection to the orchestrator. Any tool failures it collects from `tool_results` are summarized and stored on `review.error_message` by `process_review()`, so a failed tool is visible on the review instead of being silently dropped. A partial tool failure still lets the review complete; only a safety-check failure or unhandled exception marks it `"failed"`.
+
+**Tests added or updated:**
+Added `tests/unit/test_orchestrator_tool_failures.py` (reproduction, Unit 8): confirms `Orchestrator.run()` logs and records a tool failure in `tool_results`. Added `tests/unit/test_review_service_tool_failures.py` (Unit 9): covers the new `_build_tool_registry`/`_build_orchestrator_input`/`_format_tool_failures` helpers, confirms `_run_agent_orchestration()` surfaces a broken tool in `tool_failures`, and an end-to-end `process_review()` check that a failing tool sets `review.error_message` (naming the tool) while `review.status` still becomes `"complete"`, and that a healthy run leaves `error_message` as `None`.
+
+**Self-review confirmation:** [x] make check passes  [x] make test-unit passes
+
+**Draft PR feedback received from:** Madeline Gilmore
