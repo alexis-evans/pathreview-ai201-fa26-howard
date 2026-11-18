@@ -58,10 +58,16 @@ Where exactly a tool failure should surface in the review response (a new `tool_
 ### Check-in 1 (mid-week)
 
 **Current progress:**
-Plan is complete as described in PLAN.md. Fix is implemented, and new tests are in place to verify behavior is working as intented.
+All sub-tasks from `PLAN.md` are done. In order:
+1. Reproduced the bug (`tests/unit/test_orchestrator_tool_failures.py`, from Unit 8) and wrote `PLAN.md`.
+2. Wired `_run_agent_orchestration()` in `core/services/review_service.py` to build a real `Orchestrator` with the production tool registry (`_build_tool_registry()`) and translate `Profile` + ingestion results into orchestrator input (`_build_orchestrator_input()`), instead of the old hardcoded placeholder that never touched the orchestrator at all.
+3. Collected any tool failures out of `tool_results` into a `tool_failures` list and summarized them (`_format_tool_failures()`); `process_review()` now stores that summary on `review.error_message` (a field that already existed but was never populated). A partial tool failure still lets the review complete.
+4. Added `tests/unit/test_review_service_tool_failures.py`: unit tests for the three new helpers, plus an end-to-end `process_review()` check that a failing tool sets `review.error_message` while a healthy run leaves it `None`.
+5. Wrote and ran a manual verification script (not committed — scratchpad only) that breaks a tool, runs the real `process_review()`, and prints `review.status`/`review.error_message` to confirm the fix visually, end to end, outside of pytest assertions.
+6. `make check` and `make test-unit` both pass locally; opened a draft PR and requested feedback.
 
 **Next steps:**
-Work on writing a script to verify the change visually.
+Address draft PR feedback from Madeline Gilmore (see below) before marking the PR ready for review.
 
 **Blockers:**
 N/A
@@ -83,3 +89,39 @@ Added `tests/unit/test_orchestrator_tool_failures.py` (reproduction, Unit 8): co
 **Self-review confirmation:** [x] make check passes  [x] make test-unit passes
 
 **Draft PR feedback received from:** Madeline Gilmore
+
+## Unit 10 — Iteration & reflection
+
+### Reviewer feedback
+
+**Feedback received:** [ ] Yes  [ ] No — still awaiting review
+
+**Summary of feedback:**
+[What did reviewers comment on? Or note that no review came in.]
+
+**How you responded:**
+[What changes did you make, or what did you reply? If no feedback,
+leave blank.]
+
+---
+
+### Reflection
+
+**What was harder than you expected?**
+[Be specific — what part of the process, codebase, or workflow
+surprised you?]
+
+**What did you learn about working in a large codebase?**
+[What's different about contributing to someone else's production code
+vs. building your own project?]
+
+**How did AI tools help — and where did they fall short?**
+[Where was AI assistance most useful this module? Where did you need
+to go beyond what AI could give you?]
+
+**What would you do differently if you started over?**
+[Issue selection, planning, implementation, or process — anything
+you'd change?]
+
+**What are you most proud of from this module?**
+[One thing — it doesn't have to be the PR itself.]
