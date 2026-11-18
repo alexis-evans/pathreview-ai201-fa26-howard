@@ -106,6 +106,12 @@ ${section.suggestions.map((s) => `- ${s}`).join('\n')}
           </div>
         )}
 
+        {fullReview?.status === 'complete' && fullReview.error_message && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800">{fullReview.error_message}</p>
+          </div>
+        )}
+
         {fullReview && fullReview.status === 'complete' && (
           <>
             <div className="mb-8 flex items-center justify-between">
