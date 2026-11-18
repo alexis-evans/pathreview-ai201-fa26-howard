@@ -54,13 +54,22 @@ class Orchestrator:
         for tool_name, tool_input in plan:
             try:
                 result = self._execute_tool(tool_name, tool_input)
-                results[tool_name] = result.data if hasattr(result, "data") else result
-
-                logger.info("tool_executed", tool=tool_name, success=True)
-
             except Exception as e:
                 logger.error("tool_execution_failed", tool=tool_name, error=str(e))
                 results[tool_name] = {"error": str(e), "success": False}
+                continue
+
+            # Most tools don't let an exception escape; they catch their own
+            # errors and return ToolResult(success=False, ...) instead. Check
+            # that explicitly, or a failed tool call is silently recorded as
+            # a success.
+            if getattr(result, "success", True) is False:
+                error = getattr(result, "error", None) or "Tool reported failure"
+                logger.error("tool_execution_failed", tool=tool_name, error=error)
+                results[tool_name] = {"error": error, "success": False}
+            else:
+                results[tool_name] = result.data if hasattr(result, "data") else result
+                logger.info("tool_executed", tool=tool_name, success=True)
 
         # Persist state
         if self.session_store:

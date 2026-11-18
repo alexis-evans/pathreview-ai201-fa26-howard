@@ -25,6 +25,17 @@ tool_results outside this test file. So there is currently no code path for
 a tool failure to travel from the orchestrator into a review -- the feature
 gap is real, and it is a missing connection rather than a crashable code path.
 See PLAN.md for the fix.
+
+Follow-up (2026-11-18, review feedback): the tests above only simulated a
+tool that *raises*. Every real tool (GitHubTool, TechDetector, ReadmeScorer,
+SkillExtractor, MarketAnalyzer) catches its own errors internally and
+returns ToolResult(success=False, ...) instead -- confirmed by grep, all
+five do this; none let an exception escape in their normal failure paths.
+Orchestrator.run() previously only checked for raised exceptions, so this
+realistic case was recorded as a *success* (results[tool_name] = result.data,
+logged with success=True). Added ReturnsFailureTool and the
+test_*_returns_failure_result tests below to cover that path, and fixed
+Orchestrator.run() to check result.success as well as catching exceptions.
 """
 
 import json
@@ -56,6 +67,17 @@ class HealthyTool:
 
     def execute(self, input_data: dict) -> ToolResult:
         return ToolResult(success=True, data={"score": 8})
+
+
+class ReturnsFailureTool:
+    """Matches how every real tool actually fails: catches its own error
+    and returns ToolResult(success=False, ...) rather than raising."""
+
+    name = "readme_scorer"
+    description = "Test tool that reports failure without raising"
+
+    def execute(self, input_data: dict) -> ToolResult:
+        return ToolResult(success=False, data={}, error="Repository not found")
 
 
 @pytest.fixture(autouse=True)
@@ -108,3 +130,27 @@ def test_healthy_tool_is_not_recorded_as_failure():
 
     assert output["tool_results"]["readme_scorer"].get("success") is not False
     assert not [e for e in logs if e["event"] == "tool_execution_failed"]
+
+
+def test_tool_that_returns_failure_result_is_recorded_in_tool_results():
+    """The realistic case: a tool that catches its own error and returns
+    ToolResult(success=False, ...) instead of raising."""
+    orchestrator = make_orchestrator(ReturnsFailureTool())
+
+    output = orchestrator.run("profile-1", PROFILE)
+
+    entry = output["tool_results"]["readme_scorer"]
+    assert entry["success"] is False
+    assert entry["error"] == "Repository not found"
+
+
+def test_tool_that_returns_failure_result_is_logged_to_terminal():
+    orchestrator = make_orchestrator(ReturnsFailureTool())
+
+    with capture_logs() as logs:
+        orchestrator.run("profile-1", PROFILE)
+
+    failures = [e for e in logs if e["event"] == "tool_execution_failed"]
+    assert len(failures) == 1
+    assert failures[0]["tool"] == "readme_scorer"
+    assert failures[0]["log_level"] == "error"
