@@ -294,6 +294,12 @@ async def _run_ingestion_pipeline(db, profile: Profile) -> list[dict]:
 def _format_tool_failures(tool_failures: list[dict]) -> str | None:
     """Build a user-facing summary of any tools that failed during analysis.
 
+    Names only the tools that failed, not their raw error text -- a tool's
+    error (e.g. an exception message) can contain internals we don't want
+    to show a user. The full error is still logged server-side by
+    Orchestrator.run() and kept in `tool_failures` for any caller that
+    wants structured detail.
+
     Args:
         tool_failures: List of {"tool": str, "error": str} dicts.
 
@@ -303,8 +309,8 @@ def _format_tool_failures(tool_failures: list[dict]) -> str | None:
     if not tool_failures:
         return None
 
-    details = "; ".join(f"{f['tool']} ({f['error']})" for f in tool_failures)
-    return f"Some analysis steps failed and were skipped: {details}"
+    tool_names = ", ".join(f["tool"] for f in tool_failures)
+    return f"Some analysis steps couldn't complete and were skipped: {tool_names}."
 
 
 def _build_tool_registry() -> dict[str, BaseTool]:
@@ -333,6 +339,14 @@ def _build_orchestrator_input(profile: Profile, ingestion_results: list[dict]) -
     Returns:
         Dict shaped for Orchestrator._build_plan() (github_username,
         readme_content, resume_text, etc.).
+
+    Note:
+        Deliberately omits "projects", so _build_plan() never schedules
+        github_tool: Profile has no stored repo list to build it from
+        today. The readme_content lookup below is similarly
+        forward-looking -- _run_ingestion_pipeline() only ever emits
+        "github"/"portfolio"/"resume" sources, never "readme", so this
+        branch has no live data to match yet.
     """
     readme_content = next(
         (s.get("data") for s in ingestion_results if s.get("source_type") == "readme"),
